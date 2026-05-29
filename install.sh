@@ -2,7 +2,7 @@
 # mobile443-nft — мобильный ASN allowlist + gov/antiscanner blocklist → nftables
 #
 # Использование:
-#   sudo bash <(curl -fsSL https://raw.githubusercontent.com/YLisov/nft-config-mobile/main/install.sh)
+#   curl -fsSL https://raw.githubusercontent.com/YLisov/nft-config-mobile/main/install.sh | sudo bash
 #
 # Переменные окружения:
 #   PORTS="443 8443"  — порты через пробел (по умолчанию: 443)
@@ -19,6 +19,9 @@ CACHE_FILE="/var/lib/mobile443/prefixes.txt"
 NFT_INCLUDE="/etc/nftables.d/mobile443.nft"
 NFT_MAIN="/etc/nftables.conf"
 APPLY_SCRIPT="/usr/local/sbin/mobile443-apply-nft.sh"
+
+# Строгий фильтр: только валидные IPv4 CIDR вида X.X.X.X/Y
+CIDR_FILTER='^([0-9]{1,3}\.){3}[0-9]{1,3}/[0-9]{1,2}$'
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -47,13 +50,13 @@ mkdir -p "$LIST_DIR" /var/lib/mobile443 /etc/nftables.d
 # --- Blocklists ---
 echo -e "${CYAN}==> Скачиваем government список...${NC}"
 curl -fsSL "https://raw.githubusercontent.com/shadow-netlab/traffic-guard-lists/refs/heads/main/public/government_networks.list" \
-  | grep -v '^[[:space:]]*[#$]' | grep -v '^[[:space:]]*$' | sort -u \
+  | grep -E "$CIDR_FILTER" | sort -u \
   > "$LIST_DIR/government_networks.list"
 echo -e "${GREEN}    ✓ $(wc -l < "$LIST_DIR/government_networks.list") записей${NC}"
 
 echo -e "${CYAN}==> Скачиваем antiscanner список...${NC}"
 curl -fsSL "https://raw.githubusercontent.com/shadow-netlab/traffic-guard-lists/refs/heads/main/public/antiscanner.list" \
-  | grep -v '^[[:space:]]*[#$]' | grep -v '^[[:space:]]*$' | sort -u \
+  | grep -E "$CIDR_FILTER" | sort -u \
   > "$LIST_DIR/antiscanner.list"
 echo -e "${GREEN}    ✓ $(wc -l < "$LIST_DIR/antiscanner.list") записей${NC}"
 
@@ -88,7 +91,7 @@ for asn in "${ASNS[@]}"; do
   printf "✓\n"
 done
 
-sort -u "$TMPFILE" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$' > "$CACHE_FILE"
+sort -u "$TMPFILE" | grep -E "$CIDR_FILTER" > "$CACHE_FILE"
 echo -e "${GREEN}    ✓ $(wc -l < "$CACHE_FILE") мобильных префиксов${NC}"
 
 # --- Генерация include-файла ---
@@ -136,8 +139,8 @@ LIST_DIR="/opt/mobile443/lists"
 CACHE_FILE="/var/lib/mobile443/prefixes.txt"
 NFT_INCLUDE="/etc/nftables.d/mobile443.nft"
 
-[[ -f "$LIST_DIR/government_networks.list" ]] || { echo "ERROR: gov list missing";         exit 1; }
-[[ -f "$LIST_DIR/antiscanner.list" ]]         || { echo "ERROR: antiscanner list missing"; exit 1; }
+[[ -f "$LIST_DIR/government_networks.list" ]] || { echo "ERROR: gov list missing";            exit 1; }
+[[ -f "$LIST_DIR/antiscanner.list" ]]         || { echo "ERROR: antiscanner list missing";    exit 1; }
 [[ -f "$CACHE_FILE" ]]                         || { echo "ERROR: mobile prefix cache missing"; exit 1; }
 
 gov=$(tr '\n' ',' < "$LIST_DIR/government_networks.list" | sed 's/,$//')
